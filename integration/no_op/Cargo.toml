@@ -1,0 +1,11 @@
+[package]
+name = "no_op"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm_split_helpers.workspace = true

@@ -402,6 +402,9 @@ impl<'g> DepGraphAnalysis<'g> {
             .explore(&roots, self.dep_graph, self.wbg_rooting_deps);
         color_all(&mut self.scc_root_colors, scc_roots, color);
     }
+    fn is_unexplored(&self, node: &DepNode) -> bool {
+        self.scc_searcher.scc_of(node).is_none()
+    }
     fn into_painter(self) -> DepGraphPainter<impl Iterator<Item = SccEvent>> {
         let topsort = self.scc_searcher.into_topsort();
         DepGraphPainter {
@@ -466,6 +469,21 @@ pub fn compute_split_modules(
         let roots = get_split_roots(entry_points);
         graph_analysis.explore(roots, SplitModuleIdentifier::Split(module_name.clone()));
     }
+
+    let split_funcs: HashSet<InputFuncId> = split_points
+        .iter()
+        .flat_map(|split_point| [split_point.import_func, split_point.export_func])
+        .collect();
+
+    let unreached_indirect_roots: HashSet<DepNode> = module
+        .reloc_info
+        .referenced_indirects
+        .iter()
+        .filter(|&&func_id| !split_funcs.contains(&func_id))
+        .map(|&func_id| DepNode::Function(func_id))
+        .filter(|node| graph_analysis.is_unexplored(node))
+        .collect();
+    graph_analysis.explore(unreached_indirect_roots, SplitModuleIdentifier::Main);
 
     // We "paint" each dependency with the modules it must be loaded in, then put them into that module
     // accordingly.
