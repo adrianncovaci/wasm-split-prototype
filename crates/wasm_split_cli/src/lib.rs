@@ -22,7 +22,7 @@ mod util;
 
 pub use options::*;
 
-use tracing::dispatcher;
+use tracing::{dispatcher, subscriber::NoSubscriber};
 use tracing_support::perf_span;
 use util::instrument_once;
 
@@ -36,13 +36,16 @@ pub struct SplitWasm {
 
 pub fn transform(opts: Options) -> Result<SplitWasm> {
     let dispatch = dispatcher::get_default(Clone::clone);
-    let pool = ThreadPoolBuilder::new()
-        .start_handler(move |_thread| {
+    let mut pool = ThreadPoolBuilder::new();
+    // Setting any default, even an empty one, marks `tracing` as in use for the whole
+    // process, and the caller's own events then stop falling back to the `log` crate.
+    if !dispatch.is::<NoSubscriber>() {
+        pool = pool.start_handler(move |_thread| {
             let guard = dispatcher::set_default(&dispatch);
             mem::forget(guard); // make it permanent for the thread lifetime
-        })
-        .build()?;
-    pool.install(move || run_transform(opts))
+        });
+    }
+    pool.build()?.install(move || run_transform(opts))
 }
 
 fn run_transform(opts: Options) -> Result<SplitWasm> {
